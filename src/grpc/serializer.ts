@@ -4,7 +4,6 @@
  * Uses shared type detection from common/type_utils
  */
 
-import { Temporal } from "temporal-polyfill";
 import { getForthicType } from "../common/type_utils.js";
 
 // Type definitions matching the protobuf schema

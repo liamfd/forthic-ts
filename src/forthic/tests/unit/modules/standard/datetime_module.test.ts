@@ -1,5 +1,4 @@
 import { StandardInterpreter } from "../../../../interpreter";
-import { Temporal } from "temporal-polyfill";
 
 let interp: StandardInterpreter;
 

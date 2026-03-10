@@ -2,7 +2,6 @@
  * Unit tests for WebSocket JSON serializer
  */
 import { serializeValue, deserializeValue, serializeStack, deserializeStack, type StackValue } from '../../../../websocket/serializer.js';
-import { Temporal } from 'temporal-polyfill';
 
 describe('WebSocket Serializer', () => {
   describe('Basic types', () => {

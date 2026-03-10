@@ -2,6 +2,7 @@
 module.exports = {
   testEnvironment: "node",
   preset: 'ts-jest',
+  setupFiles: ['./src/test-setup.ts'],
   transform: {
     "^.+.tsx?$": ["ts-jest", {}],
   },

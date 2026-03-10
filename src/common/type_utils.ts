@@ -3,7 +3,6 @@
  * Used by both gRPC and WebSocket serializers
  */
 
-import { Temporal } from 'temporal-polyfill';
 import { isPlainDate, isInstant, isZonedDateTime } from './temporal_utils.js';
 
 /**

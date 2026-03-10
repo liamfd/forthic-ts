@@ -81,7 +81,6 @@
   },
   "homepage": "https://github.com/forthix/forthic-ts#readme",
   "dependencies": {
-    "temporal-polyfill": "^0.3.0",
     "yaml": "^2.8.1"
   },
   "optionalDependencies": {
@@ -104,6 +103,8 @@
     "ts-node": "^10.9.0",
     "tsx": "^4.20.6",
     "typescript": "^5.7.2",
+    "temporal-polyfill": "^0.3.0",
+    "temporal-spec": "^0.3.0",
     "typescript-eslint": "^8.45.0"
   },
   "browserslist": {

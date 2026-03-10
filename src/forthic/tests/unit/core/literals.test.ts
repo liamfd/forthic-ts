@@ -1,6 +1,5 @@
 import { StandardInterpreter } from "../../../interpreter";
 import { LiteralHandler } from "../../../literals";
-import { Temporal } from "temporal-polyfill";
 
 describe("Literal Handlers", () => {
   let interp: StandardInterpreter;

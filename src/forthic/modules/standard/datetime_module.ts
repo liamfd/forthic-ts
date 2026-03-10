@@ -1,6 +1,5 @@
 import { Interpreter } from "../../interpreter.js";
 import { DecoratedModule, ForthicWord, ForthicDirectWord, registerModuleDoc } from "../../decorators/word.js";
-import { Temporal } from "temporal-polyfill";
 
 export class DateTimeModule extends DecoratedModule {
   static {

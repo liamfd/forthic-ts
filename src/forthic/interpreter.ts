@@ -14,7 +14,6 @@ import {
   ForthicError,
   IntentionalStopError,
 } from "./errors.js";
-import { Temporal } from "temporal-polyfill";
 import { LiteralHandler, to_bool, to_float, to_int, to_time, to_literal_date, to_zoned_datetime } from "./literals.js";
 import { CoreModule } from "./modules/standard/core_module.js";
 import { ArrayModule } from "./modules/standard/array_module.js";

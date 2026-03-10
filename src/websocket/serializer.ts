@@ -5,7 +5,6 @@
  * Uses shared type detection from common/type_utils
  */
 
-import { Temporal } from "temporal-polyfill";
 import { getForthicType } from "../common/type_utils.js";
 
 // JSON StackValue format matching the WebSocket protocol

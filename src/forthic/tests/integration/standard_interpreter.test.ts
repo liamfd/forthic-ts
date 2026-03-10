@@ -7,7 +7,6 @@ import {
   MissingSemicolonError,
   ExtraSemicolonError,
 } from "../../errors";
-import { Temporal } from "temporal-polyfill";
 
 let interp: StandardInterpreter;
 let interp_any: any;

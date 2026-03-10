@@ -1,6 +1,5 @@
 import { StandardInterpreter, Stack, dup_interpreter } from "../../interpreter";
 import { Module, Word, PushValueWord, DefinitionWord } from "../../module";
-import { Temporal } from "temporal-polyfill";
 
 describe("Interpreter - Complete End-to-End Tests", () => {
   let interp: StandardInterpreter;

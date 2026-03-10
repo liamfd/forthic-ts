@@ -1,5 +1,4 @@
 import { to_zoned_datetime } from "../../../utils";
-import { Temporal } from "temporal-polyfill";
 
 test("to_zoned_datetime", () => {
   const date = to_zoned_datetime("2025-06-07T13:00:00", "America/Los_Angeles");

@@ -16,7 +16,6 @@
  * - Date: 2020-06-05, YYYY-MM-DD (with wildcards)
  * - ZonedDateTime: ISO 8601 timestamps with timezone support
  */
-import { Temporal } from "temporal-polyfill";
 
 /**
  * Literal handler: takes string, returns parsed value or null if can't parse
