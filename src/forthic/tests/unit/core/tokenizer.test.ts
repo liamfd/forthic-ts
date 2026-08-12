@@ -1,4 +1,10 @@
-import { Tokenizer, CodeLocation, InvalidWordNameError, UnterminatedStringError, TokenType } from "../../../tokenizer";
+import {
+  Tokenizer,
+  CodeLocation,
+  InvalidWordNameError,
+  UnterminatedStringError,
+  TokenType,
+} from "../../../tokenizer";
 
 test("Knows token positions", () => {
   const main_forthic = `
@@ -196,7 +202,6 @@ test("Knows token location in ad hoc string given reference", () => {
   });
 });
 
-
 test("Invalid word name", () => {
   const reference_location = new CodeLocation({
     source: "main",
@@ -210,12 +215,10 @@ test("Invalid word name", () => {
   try {
     const tokenizer = new Tokenizer(main_forthic, reference_location);
     tokenizer.next_token();
-  }
-  catch (e) {
+  } catch (e) {
     expect(e).toBeInstanceOf(InvalidWordNameError);
   }
 });
-
 
 test("Unterminated string", () => {
   const reference_location = new CodeLocation({
@@ -230,11 +233,10 @@ test("Unterminated string", () => {
   try {
     const tokenizer = new Tokenizer(main_forthic, reference_location);
     tokenizer.next_token();
-  }
-  catch (e) {
+  } catch (e) {
     expect(e).toBeInstanceOf(UnterminatedStringError);
   }
-})
+});
 
 describe("Triple quote string with nested quotes", () => {
   const reference_location = new CodeLocation({
@@ -325,14 +327,14 @@ describe("Triple quote string with nested quotes", () => {
       "'''simple'''",
       "'''multi\nline\nstring'''",
       "'''string with \"double quotes\"'''",
-      "'''string with 'single quotes'''''"
+      "'''string with 'single quotes'''''",
     ];
 
     const expected = [
       "simple",
       "multi\nline\nstring",
       'string with "double quotes"',
-      "string with 'single quotes''"
+      "string with 'single quotes''",
     ];
 
     inputs.forEach((input, i) => {
@@ -589,8 +591,12 @@ describe("Marked string-redirect (<<'''…''')", () => {
 
   test("the rule does not disturb < words or comparisons", () => {
     // `<`, `<REC!`, and `1 2 <` must all stay ordinary WORDs.
-    expect(tokenize("<").map((t) => [t.type, t.string])).toEqual([[TokenType.WORD, "<"]]);
-    expect(tokenize("<REC!").map((t) => [t.type, t.string])).toEqual([[TokenType.WORD, "<REC!"]]);
+    expect(tokenize("<").map((t) => [t.type, t.string])).toEqual([
+      [TokenType.WORD, "<"],
+    ]);
+    expect(tokenize("<REC!").map((t) => [t.type, t.string])).toEqual([
+      [TokenType.WORD, "<REC!"],
+    ]);
     expect(tokenize("1 2 <").map((t) => [t.type, t.string])).toEqual([
       [TokenType.WORD, "1"],
       [TokenType.WORD, "2"],
@@ -601,15 +607,21 @@ describe("Marked string-redirect (<<'''…''')", () => {
   test("<< not glued to a triple quote is not a marked string", () => {
     // `<<` with a space before the quotes is just a word.
     const tokens = tokenize("<< '''hello'''");
-    expect(tokens.map((t) => [t.type, t.string, t.is_string_redirect])).toEqual([
-      [TokenType.WORD, "<<", false],
-      [TokenType.STRING, "hello", false],
-    ]);
+    expect(tokens.map((t) => [t.type, t.string, t.is_string_redirect])).toEqual(
+      [
+        [TokenType.WORD, "<<", false],
+        [TokenType.STRING, "hello", false],
+      ],
+    );
   });
 
   test("is_string_redirect() reports the open trailing string in streaming mode", () => {
     // An open marked string (unterminated, streaming) reports true...
-    const marked = new Tokenizer("REDIRECT< <<'''hel", reference_location, true);
+    const marked = new Tokenizer(
+      "REDIRECT< <<'''hel",
+      reference_location,
+      true,
+    );
     expect(marked.next_token().string).toEqual("REDIRECT<"); // WORD
     expect(marked.next_token()).toBeNull(); // open string -> null in streaming mode
     expect(marked.is_string_redirect()).toBe(true);
@@ -620,5 +632,66 @@ describe("Marked string-redirect (<<'''…''')", () => {
     expect(plain.next_token().string).toEqual("REDIRECT<");
     expect(plain.next_token()).toBeNull();
     expect(plain.is_string_redirect()).toBe(false);
+  });
+});
+
+describe("Escape sequences in triple-quoted strings", () => {
+  const reference_location = new CodeLocation({
+    source: "test",
+    line: 1,
+    column: 1,
+    start_pos: 0,
+  });
+
+  const content = (input: string) =>
+    new Tokenizer(input, reference_location).next_token().string;
+
+  test("an escaped quote is content, not a delimiter", () => {
+    // The whole point: LLMs write `today\'s` because that is correct one
+    // delimiter width narrower, and Forthic shipped the backslash verbatim.
+    expect(content(`'''today\\'s plan'''`)).toEqual(`today's plan`);
+    expect(content(`"""he said \\"hi\\" ok"""`)).toEqual(`he said "hi" ok`);
+  });
+
+  test("triple quotes now match single-delimiter strings", () => {
+    // Same escapes, same result — the regime no longer depends on how many
+    // quote characters you counted.
+    expect(content(`'''a\\nb'''`)).toEqual(content(`'a\\nb'`));
+    expect(content(`'''don\\'t'''`)).toEqual(content(`'don\\'t'`));
+  });
+
+  test("the whitelist keeps regexes and paths writable", () => {
+    // Anything outside the whitelist stays as the literal pair.
+    expect(content(`'''zoom\\.us|meet\\.google\\.com'''`)).toEqual(
+      `zoom\\.us|meet\\.google\\.com`,
+    );
+    expect(content(`'''\\d+\\w*\\U0001'''`)).toEqual(`\\d+\\w*\\U0001`);
+  });
+
+  test("a backslash-escaped backslash does not eat the closing delimiter", () => {
+    expect(content(`'''ends with a backslash \\\\'''`)).toEqual(
+      `ends with a backslash \\`,
+    );
+  });
+
+  test("an escaped delimiter run cannot close the string early", () => {
+    expect(content(`'''a \\'\\'\\' b'''`)).toEqual(`a ''' b`);
+  });
+
+  test("unescaped tripling still closes early — this change does not fix that", () => {
+    // `today'''s plan` remains a broken program; only the silent classes move.
+    expect(content(`'''today'''s plan'''`)).toEqual("today");
+  });
+
+  test("ordinary content is untouched", () => {
+    expect(content(`'''Fetched today's mail.'''`)).toEqual(`Fetched today's mail.`);
+    expect(content(`"""'''.taco.style''' JQ@"""`)).toEqual(`'''.taco.style''' JQ@`);
+  });
+
+  test("a marked redirect string escapes the same way", () => {
+    const tokenizer = new Tokenizer(`<<'''today\\'s plan'''`, reference_location);
+    const token = tokenizer.next_token();
+    expect(token.string).toEqual(`today's plan`);
+    expect(token.is_string_redirect).toBe(true);
   });
 });

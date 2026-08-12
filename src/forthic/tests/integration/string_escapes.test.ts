@@ -76,15 +76,29 @@ describe("String escape sequences (PR 7.5)", () => {
     });
   });
 
-  describe("Triple-quoted strings — fully raw", () => {
-    test("triple-quoted preserves \\n literally", async () => {
+  // These asserted that triple-quoted strings were fully raw. They now assert
+  // the same escape whitelist the single-delimiter forms use, so the escaping
+  // regime no longer depends on how many quote characters were counted.
+  //
+  // The whitelist is what keeps this safe: only \n \t \r \0 \\ \" \' are
+  // interpreted, so the regex and Windows-path cases are unaffected — see the
+  // unchanged test below and the single-delimiter cases above.
+  describe("Triple-quoted strings — same escapes as single-delimiter", () => {
+    test("triple-quoted interprets \\n", async () => {
       await interp.run("'''a\\nb'''");
-      expect(interp.stack_pop()).toBe("a\\nb");
+      expect(interp.stack_pop()).toBe("a\nb");
     });
 
-    test("triple-quoted preserves \\\\", async () => {
+    test("triple-quoted interprets \\\\", async () => {
       await interp.run("'''a\\\\b'''");
-      expect(interp.stack_pop()).toBe("a\\\\b");
+      expect(interp.stack_pop()).toBe("a\\b");
+    });
+
+    test("an escaped quote is content and cannot close the string", async () => {
+      // The defect this change exists for: an LLM writes `today\'s` because
+      // that is correct one delimiter width narrower.
+      await interp.run("'''today\\'s plan'''");
+      expect(interp.stack_pop()).toBe("today's plan");
     });
 
     test("triple-quoted regex pattern with backslashes", async () => {

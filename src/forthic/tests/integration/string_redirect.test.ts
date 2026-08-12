@@ -1,7 +1,10 @@
 import { StandardInterpreter } from "../../interpreter";
 import { Module } from "../../module";
 import { StringRedirectError } from "../../errors";
-import { isStringRedirectSink, StringRedirectSink } from "../../string_redirect_sink";
+import {
+  isStringRedirectSink,
+  StringRedirectSink,
+} from "../../string_redirect_sink";
 
 // A sink that records every delta, plus a `{ closed: true }` marker when it closes
 // or aborts. Mirrors what a caller's sink would do, except it appends to an array
@@ -67,7 +70,9 @@ class SinkModule extends Module {
   }
 }
 
-function makeInterp(sinkFactory: () => StringRedirectSink): StandardInterpreter {
+function makeInterp(
+  sinkFactory: () => StringRedirectSink,
+): StandardInterpreter {
   return new StandardInterpreter([new SinkModule(sinkFactory)]);
 }
 
@@ -119,7 +124,9 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
     const record: any[] = [];
     const interp = makeInterp(() => recordingSink(record));
 
-    await expect(interp.streamingRun(`<<'''reply'''`, true)).rejects.toThrow(StringRedirectError);
+    await expect(interp.streamingRun(`<<'''reply'''`, true)).rejects.toThrow(
+      StringRedirectError,
+    );
 
     expect(record).toEqual([]);
     expect(interp.get_stack().get_items()).toEqual([]);
@@ -131,7 +138,9 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
 
     // `5` buries the sink, so when the marked string runs the stack top is not a
     // sink and the redirect fails fast rather than redirecting into the wrong value.
-    await expect(interp.streamingRun(`REDIRECT< 5 <<'''reply'''`, true)).rejects.toThrow(StringRedirectError);
+    await expect(
+      interp.streamingRun(`REDIRECT< 5 <<'''reply'''`, true),
+    ).rejects.toThrow(StringRedirectError);
 
     expect(record).toEqual([]);
   });
@@ -194,7 +203,9 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
 
     // The sink violates the contract by throwing; the interpreter calls write()
     // unguarded, so the error propagates and the turn aborts.
-    await expect(interp.streamingRun(`REDIRECT< <<'''reply'''`, true)).rejects.toThrow("sink boom");
+    await expect(
+      interp.streamingRun(`REDIRECT< <<'''reply'''`, true),
+    ).rejects.toThrow("sink boom");
 
     // The interpreter still abandons the in-progress redirect on its way out (abort
     // cleanup runs), but the message string never landed on the stack.
@@ -238,21 +249,23 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
 
     // Completing the marked string detects the mismatch, aborts the originally
     // active sink by reference (its abort cleanup runs), then throws.
-    await expect(interp.streamingRun(`REDIRECT< <<'''hello'''`, true)).rejects.toThrow(StringRedirectError);
+    await expect(
+      interp.streamingRun(`REDIRECT< <<'''hello'''`, true),
+    ).rejects.toThrow(StringRedirectError);
     expect(record).toEqual(["hel", { closed: true }]);
   });
 
-  test("a marked triple-quoted string redirects raw content (no escape processing)", async () => {
+  test("a marked triple-quoted string redirects escape-processed content", async () => {
     const record: any[] = [];
     const interp = makeInterp(() => recordingSink(record));
 
-    // Marked strings are triple-quoted and therefore raw: a literal backslash-n
-    // in the source stays a backslash and an `n`, not a newline. The sink receives
-    // exactly what lands on the stack.
+    // Marked strings are triple-quoted and so share the ordinary escape
+    // whitelist: a backslash-n is a newline. The sink receives exactly what
+    // lands on the stack.
     await interp.streamingRun(`REDIRECT< <<'''a\\nb'''`, true);
 
-    expect(record).toEqual(["a\\nb", { closed: true }]);
-    expectSinkThenString(interp, "a\\nb");
+    expect(record).toEqual(["a\nb", { closed: true }]);
+    expectSinkThenString(interp, "a\nb");
   });
 
   test("after abortStreamingRun, the same interpreter can start a fresh redirect turn", async () => {
@@ -267,7 +280,12 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
     // cursor — REDIRECT< has to execute again and the new message must redirect.
     await interp.streamingRun(`REDIRECT< <<'''again'''`, true);
 
-    expect(record).toEqual(["hel", { closed: true }, "again", { closed: true }]);
+    expect(record).toEqual([
+      "hel",
+      { closed: true },
+      "again",
+      { closed: true },
+    ]);
     // The newest message is on top; earlier (closed) sinks remain as clutter the
     // caller would drop.
     expect(interp.stack_peek()).toBe("again");
@@ -349,8 +367,6 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
     expectSinkThenString(interp, "hello'");
   });
 
-
-
   test("every chunk boundary yields the finalized string with no stray quotes", async () => {
     // The ticket's invariant: for EVERY chunking of a marked literal, the streamed
     // deltas must concat to exactly the string left on the stack. Split the program
@@ -375,6 +391,8 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
 
     // v1 does not support redirect literals inside word definitions: the string
     // is fed and consumed at execution time, which has no meaning while compiling.
-    await expect(interp.streamingRun(`: REPLY <<'''hi''' ;`, true)).rejects.toThrow(StringRedirectError);
+    await expect(
+      interp.streamingRun(`: REPLY <<'''hi''' ;`, true),
+    ).rejects.toThrow(StringRedirectError);
   });
 });

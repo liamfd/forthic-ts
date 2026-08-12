@@ -1,4 +1,8 @@
-import { CodeLocationData, InvalidWordNameError, UnterminatedStringError } from "./errors.js";
+import {
+  CodeLocationData,
+  InvalidWordNameError,
+  UnterminatedStringError,
+} from "./errors.js";
 
 export enum TokenType {
   STRING = 1,
@@ -78,6 +82,23 @@ export class PositionedString {
   }
 }
 
+/**
+ * Escape sequences interpreted inside string literals, of every delimiter width.
+ *
+ * Deliberately a whitelist: anything else after a backslash (`\d`, `\w`, `\U`)
+ * stays as the literal pair, which is what keeps regex patterns and
+ * Windows-style paths writable without doubling every backslash.
+ */
+const ESCAPE_MAP: Record<string, string> = {
+  n: "\n",
+  t: "\t",
+  r: "\r",
+  "0": "\0",
+  "\\": "\\",
+  '"': '"',
+  "'": "'",
+};
+
 export class Tokenizer {
   reference_location: CodeLocation;
   line: number;
@@ -108,7 +129,7 @@ export class Tokenizer {
     streaming: boolean = false,
   ) {
     if (!reference_location) {
-      reference_location = new CodeLocation();  // No default source
+      reference_location = new CodeLocation(); // No default source
     }
     this.reference_location = reference_location;
     this.line = reference_location.line;
@@ -198,6 +219,7 @@ export class Tokenizer {
     return this.is_triple_quote(index + 1, this.input_string[index + 1]);
   }
 
+
   advance_position(num_chars: number): number {
     let i: number;
     if (num_chars >= 0) {
@@ -259,7 +281,10 @@ export class Tokenizer {
   get_string_value(): string {
     if (this.open_triple_quote_delim === null) return this.token_string;
     let end = this.token_string.length;
-    while (end > 0 && this.token_string[end - 1] === this.open_triple_quote_delim) {
+    while (
+      end > 0 &&
+      this.token_string[end - 1] === this.open_triple_quote_delim
+    ) {
       end--;
     }
     return this.token_string.slice(0, end);
@@ -303,7 +328,10 @@ export class Tokenizer {
       else if (char === "}") {
         this.token_string = char;
         return new Token(TokenType.END_MODULE, char, this.get_token_location());
-      } else if (char === "<" && this.is_string_redirect_start(this.input_pos)) {
+      } else if (
+        char === "<" &&
+        this.is_string_redirect_start(this.input_pos)
+      ) {
         // Marked redirect string `<<'''…` / `<<"""…`. The first `<` is `char`;
         // skip the second `<` plus the three opening quotes, then gather as a
         // raw triple-quoted string flagged for redirect.
@@ -484,6 +512,20 @@ export class Tokenizer {
 
     while (this.input_pos < this.input_string.length) {
       const char = this.input_string[this.input_pos];
+      // Escapes are resolved before delimiter detection, so an escaped quote
+      // is content and can never close the literal.
+      if (char === "\\" && this.input_pos + 1 < this.input_string.length) {
+        const next_char = this.input_string[this.input_pos + 1];
+        if (Object.prototype.hasOwnProperty.call(ESCAPE_MAP, next_char)) {
+          this.advance_position(2);
+          this.token_string += ESCAPE_MAP[next_char];
+          continue;
+        }
+        // Not a recognised escape: the backslash is ordinary content.
+        this.advance_position(1);
+        this.token_string += char;
+        continue;
+      }
       if (
         char === string_delimiter &&
         this.is_triple_quote(this.input_pos, char)
@@ -527,20 +569,7 @@ export class Tokenizer {
     this.note_start_token();
     const string_delimiter = delim;
 
-    // Whitelist of escape sequences interpreted in regular (single-delimiter)
-    // strings. Anything else after a backslash (e.g., \d, \w, \U) stays as
-    // the literal pair — preserves regex patterns and Windows-style paths.
-    // Triple-quoted strings ('''...''', """...""") are gathered by a
-    // separate state and remain fully raw.
-    const escape_map: Record<string, string> = {
-      n: "\n",
-      t: "\t",
-      r: "\r",
-      "0": "\0",
-      "\\": "\\",
-      '"': '"',
-      "'": "'",
-    };
+    const escape_map = ESCAPE_MAP;
 
     while (this.input_pos < this.input_string.length) {
       const char = this.input_string[this.input_pos];
@@ -639,7 +668,8 @@ export class Tokenizer {
     }
 
     // If dot symbol has no characters after the dot, treat it as a word
-    if (full_token_string.length < 2) { // "." + at least 1 char = 2 minimum
+    if (full_token_string.length < 2) {
+      // "." + at least 1 char = 2 minimum
       return new Token(
         TokenType.WORD,
         full_token_string,
