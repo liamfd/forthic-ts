@@ -387,14 +387,14 @@ Use a backslash to include a quote that would otherwise close the string. For
 ordinary strings, prefer escaping the quote over changing delimiters just to
 accommodate it:
 
-- \`'he\\'s good'\` → \`he's good\`
-- \`"She said \\"yes\\""\` → \`She said "yes"\`
+- Write \`'he\\'s good'\` to produce \`he's good\`.
+- Write \`"She said \\"yes\\""\` to produce \`She said "yes"\`.
 
 Triple-quoted strings use the same rule. Escape each quote in a delimiter-sized
 run so it remains content:
 
-- \`'''today\\'s plan'''\` → \`today's plan\`
-- \`'''a \\'\\'\\' b'''\` → \`a ''' b\`
+- Write \`'''today\\'s plan'''\` to produce \`today's plan\`.
+- Write \`'''a \\'\\'\\' b'''\` to produce \`a ''' b\`.
 
 Escapes are processed before delimiter detection, so an escaped quote cannot
 close the string. An unescaped delimiter still does: \`'''today'''s plan'''\`
