@@ -27,6 +27,19 @@ describe("Interpreter.streamingRun", () => {
     ]);
   });
 
+  test("a raw string survives every chunk boundary, including between r and its quote", async () => {
+    // The prefix is a lookahead from transition_from_START, so a chunk ending on
+    // the bare `r` must be held back as an incomplete trailing token and re-read
+    // once the quote arrives — the same rule that protects a half-streamed word.
+    const program = `[ r'a\\nb' ] 0 NTH`;
+    for (let cut = 1; cut < program.length; cut++) {
+      const streamed = new StandardInterpreter();
+      await streamed.streamingRun(program.slice(0, cut), false);
+      await streamed.streamingRun(program, true);
+      expect(streamed.get_stack().get_items()).toEqual(["a\\nb"]);
+    }
+  });
+
   test("multi-line stream ending with word execution using incremental streaming", async () => {
     const interp = new StandardInterpreter();
 

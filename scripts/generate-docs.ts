@@ -372,12 +372,34 @@ Top of stack is rightmost. Forthic is postfix: arguments precede the word.
 
 ### Strings
 
-- \`'''triple single quotes'''\` — preferred for raw data/content (no escape interpretation)
+- \`'''triple single quotes'''\` — preferred for prose and multi-line content
 - \`"""triple double quotes"""\` — preferred for embedding Forthic code as a string
 - \`'foo'\` and \`"foo"\` — regular strings; interpret a small whitelist of
   escapes: \`\\n \\t \\r \\0 \\\\ \\" \\'\`. Anything else (\`\\d\`, \`\\w\`, \`\\U\`, etc.)
   stays as the literal pair, so regex patterns and Windows paths work unchanged.
 - \`""\` — empty string (NOT \`''''\`)
+
+Write escapes normally — \`'line1\\nline2'\` is a real newline.
+
+**\`r\` is an escape hatch, not a general rule.** \`r'foo'\`, \`r"foo"\`,
+\`r'''foo'''\` and \`r"""foo"""\` interpret nothing, so every backslash reaches
+whatever reads the string next. Reach for it only when the content carries
+escapes that something *else* has to read:
+
+- JSON you are about to parse — \`JSON>\` reads the escapes itself:
+  \`r'''{"msg": "line1\\nline2"}''' JSON> [.msg] REC@\` → \`'line1\\nline2'\`
+- Forthic source you are about to run — \`RUN\` reads them itself:
+  \`r"""'a\\nb'""" RUN\` → \`'a\\nb'\`
+- a path or pattern where a letter follows the backslash:
+  \`r'C:\\temp'\` → \`'C:\\\\temp'\` — plain \`'C:\\temp'\` holds a tab, not a backslash
+
+Do not rely on a bare \`'''…'''\` to keep a backslash. It is raw today, but a
+future release makes it interpret the whitelist above; only the \`r\` forms stay
+raw.
+
+A raw string has no escapes, so it cannot contain its own delimiter: \`r'don't'\`
+ends at the apostrophe. Switch delimiter (\`r"don't"\`) or widen it
+(\`r'''don't'''\`).
 
 ### Arrays and Records
 
@@ -385,7 +407,7 @@ Top of stack is rightmost. Forthic is postfix: arguments precede the word.
 - Record: \`[ [ .key '''value''' ] ] REC\`
 - Field access: \`[.key] REC@\` (single key) or \`[.a .b] REC@\` (nested path)
 - Deep transform: \`rec [.a .b] '''10 *''' MAP-AT\` (equivalent to jq's \`.a.b |= ...\`)
-- JSON parse/stringify: \`JSON>\` and \`>JSON\`. Example: \`'''{"a":1}''' JSON> [.a] REC@\` → \`1\`
+- JSON parse/stringify: \`JSON>\` and \`>JSON\`. Example: \`r'''{"a":1}''' JSON> [.a] REC@\` → \`1\`
 
 ### Common Operations
 

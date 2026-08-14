@@ -83,7 +83,9 @@ export class PositionedString {
 }
 
 /**
- * Escape sequences interpreted inside string literals, of every delimiter width.
+ * Escape sequences interpreted inside single-delimiter string literals (`'…'`
+ * and `"…"`). Triple-quoted strings are raw for now and are due to join them;
+ * only the `r` prefix keeps a literal raw for good.
  *
  * Deliberately a whitelist: anything else after a backslash (`\d`, `\w`, `\U`)
  * stays as the literal pair, which is what keeps regex patterns and
@@ -219,6 +221,14 @@ export class Tokenizer {
     return this.is_triple_quote(index + 1, this.input_string[index + 1]);
   }
 
+  // A raw string literal opens with `r` glued to a quote: `r'…`, `r"…`, `r'''…`
+  // or `r"""…`. `index` points at the quote; the `r` was consumed by
+  // transition_from_START, so only a token-initial `r` counts — `WORDr'x'` stays
+  // one word. A narrow break, not a pure addition: words don't split on quotes,
+  // so `r'don't'` used to lex as a single WORD.
+  is_raw_string_start(index: number): boolean {
+    return this.is_quote(this.input_string[index]);
+  }
 
   advance_position(num_chars: number): number {
     let i: number;
@@ -338,6 +348,20 @@ export class Tokenizer {
         const quote = this.input_string[this.input_pos + 1];
         this.advance_position(4);
         return this.transition_from_GATHER_TRIPLE_QUOTE_STRING(quote, true);
+      } else if (char === "r" && this.is_raw_string_start(this.input_pos)) {
+        // Raw string `r'…'` / `r"…"` / `r'''…'''` / `r"""…"""`. The `r` is
+        // `char`, so input_pos already sits on the opening quote; skip the
+        // delimiter and gather with escape processing off.
+        const quote = this.input_string[this.input_pos];
+        if (this.is_triple_quote(this.input_pos, quote)) {
+          this.advance_position(3);
+          // Raw already, so this is an alias today — and the reason to write
+          // it anyway: the bare form is about to start interpreting escapes,
+          // and only the `r` spelling keeps a backslash after that.
+          return this.transition_from_GATHER_TRIPLE_QUOTE_STRING(quote);
+        }
+        this.advance_position(1);
+        return this.transition_from_GATHER_STRING(quote, true);
       } else if (this.is_triple_quote(this.input_pos - 1, char)) {
         this.advance_position(2); // Skip over 2nd and 3rd quote chars
         return this.transition_from_GATHER_TRIPLE_QUOTE_STRING(char);
@@ -512,20 +536,6 @@ export class Tokenizer {
 
     while (this.input_pos < this.input_string.length) {
       const char = this.input_string[this.input_pos];
-      // Escapes are resolved before delimiter detection, so an escaped quote
-      // is content and can never close the literal.
-      if (char === "\\" && this.input_pos + 1 < this.input_string.length) {
-        const next_char = this.input_string[this.input_pos + 1];
-        if (Object.prototype.hasOwnProperty.call(ESCAPE_MAP, next_char)) {
-          this.advance_position(2);
-          this.token_string += ESCAPE_MAP[next_char];
-          continue;
-        }
-        // Not a recognised escape: the backslash is ordinary content.
-        this.advance_position(1);
-        this.token_string += char;
-        continue;
-      }
       if (
         char === string_delimiter &&
         this.is_triple_quote(this.input_pos, char)
@@ -565,21 +575,19 @@ export class Tokenizer {
     );
   }
 
-  transition_from_GATHER_STRING(delim: string): Token {
+  transition_from_GATHER_STRING(delim: string, raw: boolean = false): Token {
     this.note_start_token();
     const string_delimiter = delim;
-
-    const escape_map = ESCAPE_MAP;
 
     while (this.input_pos < this.input_string.length) {
       const char = this.input_string[this.input_pos];
       this.advance_position(1);
 
-      if (char === "\\" && this.input_pos < this.input_string.length) {
+      if (!raw && char === "\\" && this.input_pos < this.input_string.length) {
         const next_char = this.input_string[this.input_pos];
-        if (Object.prototype.hasOwnProperty.call(escape_map, next_char)) {
+        if (Object.prototype.hasOwnProperty.call(ESCAPE_MAP, next_char)) {
           this.advance_position(1);
-          this.token_string += escape_map[next_char];
+          this.token_string += ESCAPE_MAP[next_char];
           continue;
         }
         // Unrecognized escape: leave both characters literal so regex

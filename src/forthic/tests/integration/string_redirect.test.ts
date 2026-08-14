@@ -255,17 +255,17 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
     expect(record).toEqual(["hel", { closed: true }]);
   });
 
-  test("a marked triple-quoted string redirects escape-processed content", async () => {
+  test("a marked triple-quoted string redirects raw content (no escape processing)", async () => {
     const record: any[] = [];
     const interp = makeInterp(() => recordingSink(record));
 
-    // Marked strings are triple-quoted and so share the ordinary escape
-    // whitelist: a backslash-n is a newline. The sink receives exactly what
-    // lands on the stack.
+    // Marked strings are triple-quoted and therefore raw: a literal backslash-n
+    // in the source stays a backslash and an `n`, not a newline. The sink receives
+    // exactly what lands on the stack.
     await interp.streamingRun(`REDIRECT< <<'''a\\nb'''`, true);
 
-    expect(record).toEqual(["a\nb", { closed: true }]);
-    expectSinkThenString(interp, "a\nb");
+    expect(record).toEqual(["a\\nb", { closed: true }]);
+    expectSinkThenString(interp, "a\\nb");
   });
 
   test("after abortStreamingRun, the same interpreter can start a fresh redirect turn", async () => {
