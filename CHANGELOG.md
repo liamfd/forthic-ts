@@ -16,9 +16,12 @@ you are already done.
 
 - **Triple-quoted strings process the seven-escape whitelist.** `'''today\'s plan'''` is now
   `today's plan` instead of shipping the backslash to whoever reads the string. Anything outside
-  the whitelist is still left as the literal pair, so `'''\d+'''`, `'''C:\Users\tmp'''` and
+  the whitelist is still left as the literal pair, so `'''\d+'''`, `'''C:\Users'''` and
   `'''zoom\.us'''` are unchanged — that is what keeps regexes and Windows paths writable without
-  doubling every backslash.
+  doubling every backslash. Mind the overlap: a path segment starting with a whitelisted letter
+  *is* affected. `'''C:\temp'''` holds a tab, not a backslash, and has to become `r'''C:\temp'''`.
+  When auditing for this change, grep for `\n`, `\t`, `\r` and `\0` rather than assuming paths are
+  safe.
 - **Escapes resolve before the closing delimiter is looked for**, so an escaped quote is content
   and can never close a literal: `'''a \'\'\' b'''` is `a ''' b`. An *unescaped* run of three
   delimiters still closes early — `'''today'''s plan'''` remains a broken program, loudly. This

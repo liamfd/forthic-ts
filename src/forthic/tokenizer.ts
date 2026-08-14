@@ -118,9 +118,7 @@ export class Tokenizer {
   // should redirect. Reset at the start of every `next_token()`.
   string_redirect_open: boolean;
   // Delimiter of the triple-quoted string currently being gathered, or null when
-  // none is open. Set while gathering and cleared when the string closes, so
-  // get_string_value() can hold back a trailing run of not-yet-decided characters
-  // — closing quotes and pending escapes — from an open (streaming) string.
+  // none is open. Drives the hold-back in get_string_value(), which documents it.
   // Reset at the start of every `next_token()`.
   private open_triple_quote_delim: string | null;
   private streaming: boolean;
@@ -291,13 +289,10 @@ export class Tokenizer {
    *     `abc\` re-tokenizes as `abc` + a newline when `\n` completes, so
    *     reporting the backslash would make the cumulative value shrink.
    *
-   * One loop rather than two passes: `\'` now yields a real quote, so a value can
-   * end `…\` + `'`, and stripping the quote exposes a backslash that must also be
-   * held. Held-back characters are not tracked or replayed — the caller re-feeds
-   * the full cumulative content each chunk, so they are picked up naturally, and
-   * `finish()` feeds the completed token string. That makes the holdback lossless
-   * for *completed* literals; a `done=true` unterminated string throws before this
-   * is consulted, and the held bytes die with the erroring turn.
+   * One loop, not two passes: `\'` yields a real quote, so stripping a trailing
+   * quote can expose a backslash that must also be held. Held-back characters are
+   * not tracked or replayed — the caller re-feeds the full cumulative content each
+   * chunk, and `finish()` feeds the completed token string.
    *
    * Deliberately conservative: a trailing backslash that turns out to be settled
    * (a resolved `\\`) is indistinguishable from a pending one, so both are held
@@ -547,9 +542,8 @@ export class Tokenizer {
     // Records whether this string is a marked redirect string so is_string_redirect()
     // reports correctly while it is still open (the streaming `return null` path).
     this.string_redirect_open = is_string_redirect;
-    // Mark this triple string as open with its delimiter so get_string_value() can
-    // hold back an unconfirmed trailing run — closing quotes, and a backslash that
-    // may yet begin an escape — while it is still gathering.
+    // Mark this triple string as open so get_string_value() can hold back its
+    // unconfirmed tail while it is still gathering.
     // Cleared on the normal close path below; left set on the streaming `return null`.
     this.open_triple_quote_delim = string_delimiter;
 
@@ -566,8 +560,7 @@ export class Tokenizer {
           this.token_string += ESCAPE_MAP[next_char];
           continue;
         }
-        // Not a recognised escape: the backslash is ordinary content, which is
-        // what keeps `\d`, `\w` and `C:\Users` writable.
+        // Not a recognised escape: the backslash is ordinary content.
         this.advance_position(1);
         this.token_string += char;
         continue;

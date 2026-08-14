@@ -388,7 +388,7 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
   });
 
   // The same invariant, generalised over payloads that can put a chunk boundary
-  // ON a backslash — the case the 0.17.0 escape flip arms. There is deliberately
+  // ON a backslash — the case escape processing arms. There is deliberately
   // NO expected text in this test: the streamed deltas are compared against the
   // string the interpreter actually left on the stack, so a future semantics
   // change cannot "fix" a real divergence by editing a literal. Exactly one
@@ -401,8 +401,8 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
   // payloads here would go red against something this change does not fix.
   test.each([
     String.raw`a\nb`, // pending \n — diverges without the hold-back
-    String.raw`a\'b`, // pending \' — the escape this release exists for
-    String.raw`C:\Users\tmp`, // non-whitelist escapes, still a pending backslash
+    String.raw`a\'b`, // pending \' — an escape whose result is the delimiter char
+    String.raw`C:\Users\tmp`, // MIXED: \U stays a literal pair, \t resolves to a tab
     String.raw`a\\b`, // CONTROL: passes even unfixed. A doubled backslash still
     //                   yields a growing prefix at every cut, so it proves
     //                   nothing on its own.

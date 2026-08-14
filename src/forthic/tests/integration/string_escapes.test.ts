@@ -77,7 +77,7 @@ describe("String escape sequences (PR 7.5)", () => {
   });
 
   // Triple-quoted strings interpret the same whitelist as every other width.
-  // The `r` prefix, added in 0.16.2, is now the only way to keep a literal raw.
+  // The `r` prefix is the only way to keep a literal raw.
   describe("Triple-quoted strings — same escapes as single-delimiter", () => {
     test("triple-quoted interprets \\n", async () => {
       await interp.run("'''a\\nb'''");
@@ -95,17 +95,29 @@ describe("String escape sequences (PR 7.5)", () => {
     });
 
     test("triple-quoted regex pattern with backslashes", async () => {
-      // Unchanged by the flip: \d and \w are outside the whitelist.
+      // \d and \w are outside the whitelist, so both pairs stay literal.
       await interp.run("'''\\d+\\w*'''");
       expect(interp.stack_pop()).toBe("\\d+\\w*");
     });
+
+    test("a path segment starting with a whitelisted letter is NOT literal", async () => {
+      // The trap in a Windows path: \U is outside the whitelist and survives, but
+      // \t in the very same literal is inside it and becomes a tab. "paths are
+      // unaffected" is the wrong mental model — only non-whitelist letters are.
+      await interp.run("'''C:\\Users\\tmp'''");
+      expect(interp.stack_pop()).toBe("C:\\Users\tmp");
+
+      // Which is why such a path has to move to the r form to survive intact.
+      await interp.run("r'''C:\\Users\\tmp'''");
+      expect(interp.stack_pop()).toBe("C:\\Users\\tmp");
+    });
   });
 
-  // The core guarantee of 0.17.0: not one assertion in this block changes. The
-  // r forms shipped in 0.16.2 exactly so these idioms could survive the flip.
+  // Every idiom in this block is escape-proof by construction — that is what the
+  // r forms are for, and no assertion here should ever need to change.
   describe("Raw string literals (r'…')", () => {
     test("the prefix suppresses the whitelist at single-delimiter width", async () => {
-      // The only thing r changes today: '…' interprets \n, r'…' does not.
+      // '…' interprets \n, r'…' does not.
       await interp.run("'a\\nb'");
       expect(interp.stack_pop()).toBe("a\nb");
       await interp.run("r'a\\nb'");

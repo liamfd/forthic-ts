@@ -671,9 +671,9 @@ describe("Raw string literals (r'…')", () => {
   });
 
   test("r at triple width is no longer an alias", () => {
-    // The 0.16.2 window is closed: the bare form interprets the whitelist, and
-    // only the r spelling keeps a backslash. This is the assertion that catches
-    // a missing raw flag on the triple-width call site.
+    // The bare form interprets the whitelist and only the r spelling keeps a
+    // backslash. This is the assertion that catches a missing raw flag on the
+    // triple-width call site.
     expect(content(`r'''a\\nb'''`)).toEqual(`a\\nb`); // raw: backslash + n
     expect(content(`'''a\\nb'''`)).toEqual("a\nb"); // bare: a real newline
     expect(content(`r"""a\\nb"""`)).toEqual(`a\\nb`);
@@ -759,7 +759,7 @@ describe("Triple-quoted strings interpret the escape whitelist", () => {
   });
 
   test("regexes and paths survive verbatim", () => {
-    // Unchanged by the flip, and the reason the whitelist is what makes it safe:
+    // Why a whitelist rather than "every backslash escapes something":
     // \d, \w, \U and \. are outside it, so both characters stay literal.
     expect(content(`'''zoom\\.us|meet\\.google\\.com'''`)).toEqual(
       `zoom\\.us|meet\\.google\\.com`,
