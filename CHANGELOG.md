@@ -4,6 +4,73 @@ All notable changes to `@forthix/forthic` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project is pre-1.0: while `0.x`, **breaking changes ship in minor releases**. Releases before 0.16.0 are recorded in the git history rather than here.
 
+## [0.17.0] - 2026-08-14
+
+**Breaking: `'''…'''` and `"""…"""` now interpret the escape whitelist.** The escaping regime no
+longer depends on how many quote characters you counted — `\n \t \r \0 \\ \" \'` mean the same
+thing at every delimiter width, and the `r` forms added in 0.16.2 are the only raw spelling. This
+is the change 0.16.2 pre-announced; if you moved backslash-carrying literals to `r'''…'''` then,
+you are already done.
+
+### Changed
+
+- **Triple-quoted strings process the seven-escape whitelist.** `'''today\'s plan'''` is now
+  `today's plan` instead of shipping the backslash to whoever reads the string. Anything outside
+  the whitelist is still left as the literal pair, so `'''\d+'''`, `'''C:\Users\tmp'''` and
+  `'''zoom\.us'''` are unchanged — that is what keeps regexes and Windows paths writable without
+  doubling every backslash.
+- **Escapes resolve before the closing delimiter is looked for**, so an escaped quote is content
+  and can never close a literal: `'''a \'\'\' b'''` is `a ''' b`. An *unescaped* run of three
+  delimiters still closes early — `'''today'''s plan'''` remains a broken program, loudly. This
+  release moves the silent failure classes, not the loud one.
+- **A triple-quoted literal ending in a backslash no longer parses.** `'''C:\'''` consumes `\'` as
+  an escaped quote, leaving `''` that cannot close, and throws `UnterminatedStringError`. Write
+  `r'''C:\'''`.
+- **Marked redirect strings (`<<'''…'''`) escape the same way**, and their sinks receive the
+  escape-processed text. There is no `<<r'''…'''` form, so redirect content that must carry a
+  literal backslash has to double it.
+- **`r'''…'''` and `r"""…"""` are no longer aliases of the bare form.** They are the only raw
+  spelling at triple width, which is exactly why they shipped a release early.
+
+### Fixed
+
+- **Streamed redirect strings no longer corrupt content when a chunk boundary falls on a
+  backslash.** `streamingRun` re-tokenizes the whole cumulative buffer each chunk and reports the
+  open string's content-so-far to its sink, which diffs by length. A trailing backslash was
+  reported as content and then re-read as an escape on the next chunk, so the value could shrink or
+  stay the same length while changing — the sink received `a\b` where the stack held a real
+  newline, or lost the character entirely. The tokenizer now holds back a trailing backslash while
+  a triple-quoted string is still open, exactly as it already held back an unconfirmed closing
+  quote. Dead before this release (nothing at triple width processed escapes) and fixed in the same
+  commit that arms it.
+
+### Migration
+
+Mechanical: **prefix any triple-quoted literal containing a backslash with `r`.** Literals with no
+backslash are unaffected. Four things to look for:
+
+- **JSON payloads.** `'''{"a": "x\ny"}''' JSON>` now throws `Bad control character in string
+  literal` — write `r'''{"a": "x\ny"}''' JSON>`.
+- **Embedded Forthic** run through `RUN`, `MAP`, `FILTER` or `WHEN`: `"""'a\\nb'""" RUN` processes
+  the escape twice. Write `r"""'a\\nb'""" RUN`.
+- **A literal ending in a backslash** no longer parses, as above.
+- **Redirect literals have no raw spelling.** To carry a literal backslash through `<<'''…'''`,
+  double it.
+
+Anything spelled `\'` or `\"` inside a triple-quoted literal changes meaning by design — that is
+the corruption this release exists to remove.
+
+**Persisted state carries source, not values.** `export_state` captures each definition's source
+verbatim and `import_state` re-tokenizes it, so a state blob written by 0.16.x whose definitions
+contain bare triple-quoted literals with whitelisted escapes will mean something different when
+imported under 0.17.0. Re-export after migrating, or spell those literals `r'''…'''` before
+exporting.
+
+### Cross-runtime
+
+`forthic-rs` and `forthic-py` share the string-literal contract and need the same change to keep
+the runtimes on one language definition. Not actionable in this repository.
+
 ## [0.16.2] - 2026-08-14
 
 **A transitional release: move backslash-carrying strings to the `r` forms now.** Triple-quoted

@@ -76,26 +76,33 @@ describe("String escape sequences (PR 7.5)", () => {
     });
   });
 
-  // Triple-quoted strings are raw. The `r` prefix makes that explicit and is
-  // what carries data literals across the 0.17.0 change, when the bare form
-  // starts processing the whitelist above.
-  describe("Triple-quoted strings — raw", () => {
-    test("triple-quoted preserves \\n literally", async () => {
+  // Triple-quoted strings interpret the same whitelist as every other width.
+  // The `r` prefix, added in 0.16.2, is now the only way to keep a literal raw.
+  describe("Triple-quoted strings — same escapes as single-delimiter", () => {
+    test("triple-quoted interprets \\n", async () => {
       await interp.run("'''a\\nb'''");
-      expect(interp.stack_pop()).toBe("a\\nb");
+      expect(interp.stack_pop()).toBe("a\nb");
     });
 
-    test("triple-quoted preserves \\\\", async () => {
+    test("triple-quoted collapses \\\\", async () => {
       await interp.run("'''a\\\\b'''");
-      expect(interp.stack_pop()).toBe("a\\\\b");
+      expect(interp.stack_pop()).toBe("a\\b");
+    });
+
+    test("an escaped quote is content, not a delimiter", async () => {
+      await interp.run("'''today\\'s plan'''");
+      expect(interp.stack_pop()).toBe("today's plan");
     });
 
     test("triple-quoted regex pattern with backslashes", async () => {
+      // Unchanged by the flip: \d and \w are outside the whitelist.
       await interp.run("'''\\d+\\w*'''");
       expect(interp.stack_pop()).toBe("\\d+\\w*");
     });
   });
 
+  // The core guarantee of 0.17.0: not one assertion in this block changes. The
+  // r forms shipped in 0.16.2 exactly so these idioms could survive the flip.
   describe("Raw string literals (r'…')", () => {
     test("the prefix suppresses the whitelist at single-delimiter width", async () => {
       // The only thing r changes today: '…' interprets \n, r'…' does not.

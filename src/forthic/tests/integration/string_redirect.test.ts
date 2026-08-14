@@ -255,17 +255,18 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
     expect(record).toEqual(["hel", { closed: true }]);
   });
 
-  test("a marked triple-quoted string redirects raw content (no escape processing)", async () => {
+  test("a marked triple-quoted string redirects escape-processed content", async () => {
     const record: any[] = [];
     const interp = makeInterp(() => recordingSink(record));
 
-    // Marked strings are triple-quoted and therefore raw: a literal backslash-n
-    // in the source stays a backslash and an `n`, not a newline. The sink receives
-    // exactly what lands on the stack.
+    // Marked strings are triple-quoted, and triple-quoted literals interpret the
+    // whitelist. There is no `<<r'''` form, so redirect content that must carry a
+    // literal backslash has to double it. The sink receives exactly what lands on
+    // the stack either way.
     await interp.streamingRun(`REDIRECT< <<'''a\\nb'''`, true);
 
-    expect(record).toEqual(["a\\nb", { closed: true }]);
-    expectSinkThenString(interp, "a\\nb");
+    expect(record).toEqual(["a\nb", { closed: true }]);
+    expectSinkThenString(interp, "a\nb");
   });
 
   test("after abortStreamingRun, the same interpreter can start a fresh redirect turn", async () => {
@@ -384,6 +385,57 @@ describe("Interpreter.streamingRun — marked string redirect into a StringRedir
       expect(record[record.length - 1]).toEqual({ closed: true });
       expectSinkThenString(interp, "hello world");
     }
+  });
+
+  // The same invariant, generalised over payloads that can put a chunk boundary
+  // ON a backslash — the case the 0.17.0 escape flip arms. There is deliberately
+  // NO expected text in this test: the streamed deltas are compared against the
+  // string the interpreter actually left on the stack, so a future semantics
+  // change cannot "fix" a real divergence by editing a literal. Exactly one
+  // assertion runs inside the loop; a second would fail first and hide this one,
+  // because Jest stops at the first failing assertion.
+  //
+  // Backslash payloads only. `&lt;` / `&gt;` split mid-entity break the same
+  // invariant, but through unescape_string() rather than the escape branch, and
+  // that is a separate pre-existing bug tracked on its own ticket — adding those
+  // payloads here would go red against something this change does not fix.
+  test.each([
+    String.raw`a\nb`, // pending \n — diverges without the hold-back
+    String.raw`a\'b`, // pending \' — the escape this release exists for
+    String.raw`C:\Users\tmp`, // non-whitelist escapes, still a pending backslash
+    String.raw`a\\b`, // CONTROL: passes even unfixed. A doubled backslash still
+    //                   yields a growing prefix at every cut, so it proves
+    //                   nothing on its own.
+  ])(
+    "every chunk boundary streams exactly what lands on the stack: %j",
+    async (payload) => {
+      const program = `REDIRECT< <<'''${payload}'''`;
+      for (let cut = 1; cut < program.length; cut++) {
+        const record: any[] = [];
+        const interp = makeInterp(() => recordingSink(record));
+
+        await interp.streamingRun(program.slice(0, cut), false);
+        await interp.streamingRun(program, true);
+
+        const items = interp.get_stack().get_items();
+        expect({ cut, streamed: recordedText(record) }).toEqual({
+          cut,
+          streamed: items[items.length - 1],
+        });
+      }
+    },
+  );
+
+  test("escape-processed redirect content reaches the sink and the stack alike", async () => {
+    // Semantics pinned separately from the invariant above, on purpose: keeping
+    // this assertion out of that loop is what stops it masking a divergence.
+    const record: any[] = [];
+    const interp = makeInterp(() => recordingSink(record));
+
+    await interp.streamingRun(String.raw`REDIRECT< <<'''a\nb'''`, true);
+
+    expect(recordedText(record)).toBe("a\nb");
+    expectSinkThenString(interp, "a\nb");
   });
 
   test("a marked redirect string inside a definition is rejected", async () => {

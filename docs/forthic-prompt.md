@@ -10,33 +10,63 @@ Top of stack is rightmost. Forthic is postfix: arguments precede the word.
 ### Strings
 
 - `'''triple single quotes'''` — preferred for prose and multi-line content
-- `"""triple double quotes"""` — preferred for embedding Forthic code as a string
-- `'foo'` and `"foo"` — regular strings; interpret a small whitelist of
-  escapes: `\n \t \r \0 \\ \" \'`. Anything else (`\d`, `\w`, `\U`, etc.)
-  stays as the literal pair, so regex patterns and Windows paths work unchanged.
+- `"""triple double quotes"""` — preferred for embedding Forthic code as a
+  string (use `r"""…"""` when that code contains a backslash)
+- `'foo'` and `"foo"` — regular strings
 - `""` — empty string (NOT `''''`)
 
-Write escapes normally — `'line1\nline2'` is a real newline.
+**Every width interprets the same seven escapes: `\n \t \r \0 \\ \" \'`.**
+How many quote characters you counted does not change the rule. Any other
+character after a backslash leaves the pair literal, so regexes and Windows
+paths need no doubling:
 
-**`r` is an escape hatch, not a general rule.** `r'foo'`, `r"foo"`,
-`r'''foo'''` and `r"""foo"""` interpret nothing, so every backslash reaches
-whatever reads the string next. Reach for it only when the content carries
-escapes that something *else* has to read:
+- `'''a\nb'''` → `'a\nb'` — the same newline at every width
+- `'''\d+\w*'''` → `'\d+\w*'` — `\d` is not in the whitelist, so it survives
+
+**An escape resolves before the closing delimiter is looked for, so an escaped
+quote is content and can never close the literal.** That is the rule that makes
+`\'` safe inside `'''…'''` and `\"` safe inside `"""…"""`:
+
+- `'''today\'s plan'''` → `'today\'s plan'`
+- `"""say \"hi\" now"""` → `'say "hi" now'`
+
+An **unescaped** run of three delimiters closes the literal wherever it appears.
+`'''today'''s plan'''` is not a string containing an apostrophe — it is the
+string `today` followed by two stray words, and it fails at run time. Escape
+the quote, or change the delimiter.
+
+**Usually no escape is needed — change the delimiter instead.** A quote that is
+not the delimiter is ordinary content, and reaching for the other width first is
+the better habit:
+
+- `'''He said "hi"'''` → `"He said \"hi\""`
+- `"""today's plan"""` → `'today\'s plan'`
+
+Use `\'` or `\"` only when the text needs both quote characters, or when it
+ends in the delimiter.
+
+**`r` turns escaping off completely — an escape hatch, not a general rule.**
+`r'foo'`, `r"foo"`, `r'''foo'''` and `r"""foo"""` interpret nothing, so every
+backslash reaches whatever reads the string next. Inside an `r` string `\'` is
+two characters, not one:
+
+- `'''a\'b''' STR-LENGTH` → `3`
+- `r'''a\'b''' STR-LENGTH` → `4`
+
+Reach for `r` only when the content carries escapes that something *else* has
+to read:
 
 - JSON you are about to parse — `JSON>` reads the escapes itself:
   `r'''{"msg": "line1\nline2"}''' JSON> [.msg] REC@` → `'line1\nline2'`
-- Forthic source you are about to run — `RUN` reads them itself:
+- Forthic source you are about to run — `RUN`, `MAP`, `FILTER` and `WHEN` all
+  take Forthic source as a string, read by an inner tokenizer that needs the
+  escapes intact:
   `r"""'a\nb'""" RUN` → `'a\nb'`
-- a path or pattern where a letter follows the backslash:
+- a path or pattern where a whitelisted letter follows the backslash:
   `r'C:\temp'` → `'C:\\temp'` — plain `'C:\temp'` holds a tab, not a backslash
 
-Do not rely on a bare `'''…'''` to keep a backslash. It is raw today, but a
-future release makes it interpret the whitelist above; only the `r` forms stay
-raw.
-
-A raw string has no escapes, so it cannot contain its own delimiter: `r'don't'`
-ends at the apostrophe. Switch delimiter (`r"don't"`) or widen it
-(`r'''don't'''`).
+A single-delimiter raw string cannot contain its own delimiter: `r'don't'` ends
+at the apostrophe. Switch delimiter (`r"don't"`) or widen it (`r'''don't'''`).
 
 ### Arrays and Records
 

@@ -670,13 +670,14 @@ describe("Raw string literals (r'…')", () => {
     expect(content(`'C:\\\\Users'`)).toEqual(`C:\\Users`);
   });
 
-  test("r at triple width is an alias today", () => {
-    // Triple-quoted strings are already raw, so the prefix changes nothing yet.
-    // It exists so code can mark the intent before the bare form starts
-    // processing escapes.
-    expect(content(`r'''a\\nb'''`)).toEqual(`a\\nb`);
-    expect(content(`r'''a\\nb'''`)).toEqual(content(`'''a\\nb'''`));
-    expect(content(`r"""a\\nb"""`)).toEqual(content(`"""a\\nb"""`));
+  test("r at triple width is no longer an alias", () => {
+    // The 0.16.2 window is closed: the bare form interprets the whitelist, and
+    // only the r spelling keeps a backslash. This is the assertion that catches
+    // a missing raw flag on the triple-width call site.
+    expect(content(`r'''a\\nb'''`)).toEqual(`a\\nb`); // raw: backslash + n
+    expect(content(`'''a\\nb'''`)).toEqual("a\nb"); // bare: a real newline
+    expect(content(`r"""a\\nb"""`)).toEqual(`a\\nb`);
+    expect(content(`"""a\\nb"""`)).toEqual("a\nb");
   });
 
   test("a raw string can end in a backslash — Python cannot express this", () => {
@@ -740,7 +741,7 @@ describe("Raw string literals (r'…')", () => {
   });
 });
 
-describe("Triple-quoted strings are raw", () => {
+describe("Triple-quoted strings interpret the escape whitelist", () => {
   const reference_location = new CodeLocation({
     source: "test",
     line: 1,
@@ -751,28 +752,41 @@ describe("Triple-quoted strings are raw", () => {
   const content = (input: string) =>
     new Tokenizer(input, reference_location).next_token().string;
 
-  test("backslash escapes are not interpreted", () => {
-    expect(content(`'''a\\nb'''`)).toEqual(`a\\nb`);
-    expect(content(`'''a\\\\b'''`)).toEqual(`a\\\\b`);
+  test("backslash escapes are interpreted, as at single-delimiter width", () => {
+    expect(content(`'''a\\nb'''`)).toEqual("a\nb");
+    expect(content(`'''a\\\\b'''`)).toEqual(`a\\b`);
+    expect(content(`'''a\\nb'''`)).toEqual(content(`'a\\nb'`));
   });
 
   test("regexes and paths survive verbatim", () => {
+    // Unchanged by the flip, and the reason the whitelist is what makes it safe:
+    // \d, \w, \U and \. are outside it, so both characters stay literal.
     expect(content(`'''zoom\\.us|meet\\.google\\.com'''`)).toEqual(
       `zoom\\.us|meet\\.google\\.com`,
     );
     expect(content(`'''\\d+\\w*\\U0001'''`)).toEqual(`\\d+\\w*\\U0001`);
   });
 
-  test("an escaped quote is not yet content — known gap, closes in 0.17.0", () => {
-    // An LLM writes `today\'s` because that is correct one delimiter width
-    // narrower, and the backslash still ships verbatim. Making the bare form
-    // process the whitelist is what 0.17.0 does; until then the migration path
-    // is to move data literals to r'''…'''.
-    expect(content(`'''today\\'s plan'''`)).toEqual(`today\\'s plan`);
+  test("an escaped quote is content and can never close the literal", () => {
+    // The whole point of the release: an LLM writes `today\'s` because that is
+    // correct one delimiter width narrower, and now it means the same thing here.
+    expect(content(`'''today\\'s plan'''`)).toEqual("today's plan");
+    expect(content(`"""say \\"hi\\" now"""`)).toEqual('say "hi" now');
+    // Escapes resolve before delimiter detection, so an escaped run is content.
+    expect(content(`'''a \\'\\'\\' b'''`)).toEqual("a ''' b");
   });
 
   test("unescaped tripling still closes early", () => {
+    // Unchanged: this change moves the silent failure classes, not the loud one.
     expect(content(`'''today'''s plan'''`)).toEqual("today");
+  });
+
+  test("a literal ending in a backslash no longer parses", () => {
+    // New breaking case: `\'` is consumed as an escaped quote, leaving `''`
+    // which cannot close. Louder than corruption — the fix is the r form, which
+    // is asserted intact above.
+    expect(() => content(`'''C:\\'''`)).toThrow(UnterminatedStringError);
+    expect(content(`r'''C:\\'''`)).toEqual(`C:\\`);
   });
 
   test("ordinary content is untouched", () => {
@@ -784,10 +798,12 @@ describe("Triple-quoted strings are raw", () => {
     );
   });
 
-  test("a marked redirect string is raw too", () => {
+  test("a marked redirect string escapes the same way", () => {
+    // There is no <<r'''…''' form, so a redirect literal is always
+    // escape-processing; content carrying a literal backslash must double it.
     const tokenizer = new Tokenizer(`<<'''a\\nb'''`, reference_location);
     const token = tokenizer.next_token();
-    expect(token.string).toEqual(`a\\nb`);
+    expect(token.string).toEqual("a\nb");
     expect(token.is_string_redirect).toBe(true);
   });
 });

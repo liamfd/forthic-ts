@@ -83,9 +83,8 @@ export class PositionedString {
 }
 
 /**
- * Escape sequences interpreted inside single-delimiter string literals (`'…'`
- * and `"…"`). Triple-quoted strings are raw for now and are due to join them;
- * only the `r` prefix keeps a literal raw for good.
+ * Escape sequences interpreted inside every string literal, at every delimiter
+ * width. Only the `r` prefix (`r'…'`, `r'''…'''`) turns escaping off.
  *
  * Deliberately a whitelist: anything else after a backslash (`\d`, `\w`, `\U`)
  * stays as the literal pair, which is what keeps regex patterns and
@@ -120,8 +119,9 @@ export class Tokenizer {
   string_redirect_open: boolean;
   // Delimiter of the triple-quoted string currently being gathered, or null when
   // none is open. Set while gathering and cleared when the string closes, so
-  // get_string_value() can hold back a trailing run of not-yet-confirmed closing
-  // quotes from an open (streaming) string. Reset at the start of every `next_token()`.
+  // get_string_value() can hold back a trailing run of not-yet-decided characters
+  // — closing quotes and pending escapes — from an open (streaming) string.
+  // Reset at the start of every `next_token()`.
   private open_triple_quote_delim: string | null;
   private streaming: boolean;
 
@@ -281,19 +281,35 @@ export class Tokenizer {
    * carry. This is what a redirect string streams into its sink. Empty when no
    * string is open.
    *
-   * For an *open* triple-quoted string a trailing run of the delimiter char is
-   * held back, since those quotes may yet be the start of the closing `'''`/`"""`
-   * rather than content — so the sink never receives a quote that turns out to be
-   * a delimiter. The held-back quote is not explicitly tracked or replayed: the caller
-   * re-feeds the full cumulative content each chunk, so it just gets picked up naturally
-   * in the next chunk.
+   * For an *open* triple-quoted string, a trailing run of characters whose
+   * identity is not yet decided is held back, so a length-diffing consumer never
+   * receives a byte the finished string will not contain. Two kinds qualify:
+   *
+   *   - the delimiter char, which may yet begin the closing `'''`/`"""` (or be
+   *     greedy content) rather than being content outright;
+   *   - a backslash, which may yet begin an escape once the next chunk arrives.
+   *     `abc\` re-tokenizes as `abc` + a newline when `\n` completes, so
+   *     reporting the backslash would make the cumulative value shrink.
+   *
+   * One loop rather than two passes: `\'` now yields a real quote, so a value can
+   * end `…\` + `'`, and stripping the quote exposes a backslash that must also be
+   * held. Held-back characters are not tracked or replayed — the caller re-feeds
+   * the full cumulative content each chunk, so they are picked up naturally, and
+   * `finish()` feeds the completed token string. That makes the holdback lossless
+   * for *completed* literals; a `done=true` unterminated string throws before this
+   * is consulted, and the held bytes die with the erroring turn.
+   *
+   * Deliberately conservative: a trailing backslash that turns out to be settled
+   * (a resolved `\\`) is indistinguishable from a pending one, so both are held
+   * and the settled one is simply reported one chunk later.
    */
   get_string_value(): string {
     if (this.open_triple_quote_delim === null) return this.token_string;
     let end = this.token_string.length;
     while (
       end > 0 &&
-      this.token_string[end - 1] === this.open_triple_quote_delim
+      (this.token_string[end - 1] === this.open_triple_quote_delim ||
+        this.token_string[end - 1] === "\\")
     ) {
       end--;
     }
@@ -343,11 +359,13 @@ export class Tokenizer {
         this.is_string_redirect_start(this.input_pos)
       ) {
         // Marked redirect string `<<'''…` / `<<"""…`. The first `<` is `char`;
-        // skip the second `<` plus the three opening quotes, then gather as a
-        // raw triple-quoted string flagged for redirect.
+        // skip the second `<` plus the three opening quotes, then gather with
+        // the same escape processing every triple-quoted literal gets. There is
+        // no `<<r'''` form, so a redirect literal is always escape-processing;
+        // content that must carry a literal backslash has to double it.
         const quote = this.input_string[this.input_pos + 1];
         this.advance_position(4);
-        return this.transition_from_GATHER_TRIPLE_QUOTE_STRING(quote, true);
+        return this.transition_from_GATHER_TRIPLE_QUOTE_STRING(quote, true, false);
       } else if (char === "r" && this.is_raw_string_start(this.input_pos)) {
         // Raw string `r'…'` / `r"…"` / `r'''…'''` / `r"""…"""`. The `r` is
         // `char`, so input_pos already sits on the opening quote; skip the
@@ -355,10 +373,9 @@ export class Tokenizer {
         const quote = this.input_string[this.input_pos];
         if (this.is_triple_quote(this.input_pos, quote)) {
           this.advance_position(3);
-          // Raw already, so this is an alias today — and the reason to write
-          // it anyway: the bare form is about to start interpreting escapes,
-          // and only the `r` spelling keeps a backslash after that.
-          return this.transition_from_GATHER_TRIPLE_QUOTE_STRING(quote);
+          // At triple width `r` is the only raw spelling: the bare form
+          // interprets the whitelist, so this is what 0.16.2 shipped for.
+          return this.transition_from_GATHER_TRIPLE_QUOTE_STRING(quote, false, true);
         }
         this.advance_position(1);
         return this.transition_from_GATHER_STRING(quote, true);
@@ -523,6 +540,7 @@ export class Tokenizer {
   transition_from_GATHER_TRIPLE_QUOTE_STRING(
     delim: string,
     is_string_redirect: boolean = false,
+    raw: boolean = false,
   ): Token {
     this.note_start_token();
     const string_delimiter = delim;
@@ -530,12 +548,31 @@ export class Tokenizer {
     // reports correctly while it is still open (the streaming `return null` path).
     this.string_redirect_open = is_string_redirect;
     // Mark this triple string as open with its delimiter so get_string_value() can
-    // hold back an unconfirmed trailing delimiter run while it is still gathering.
+    // hold back an unconfirmed trailing run — closing quotes, and a backslash that
+    // may yet begin an escape — while it is still gathering.
     // Cleared on the normal close path below; left set on the streaming `return null`.
     this.open_triple_quote_delim = string_delimiter;
 
     while (this.input_pos < this.input_string.length) {
       const char = this.input_string[this.input_pos];
+
+      // Escapes resolve before delimiter detection, so an escaped quote is
+      // content and can never close the literal. Unlike GATHER_STRING this loop
+      // does not pre-advance, so input_pos still points at `char`.
+      if (!raw && char === "\\" && this.input_pos + 1 < this.input_string.length) {
+        const next_char = this.input_string[this.input_pos + 1];
+        if (Object.prototype.hasOwnProperty.call(ESCAPE_MAP, next_char)) {
+          this.advance_position(2);
+          this.token_string += ESCAPE_MAP[next_char];
+          continue;
+        }
+        // Not a recognised escape: the backslash is ordinary content, which is
+        // what keeps `\d`, `\w` and `C:\Users` writable.
+        this.advance_position(1);
+        this.token_string += char;
+        continue;
+      }
+
       if (
         char === string_delimiter &&
         this.is_triple_quote(this.input_pos, char)

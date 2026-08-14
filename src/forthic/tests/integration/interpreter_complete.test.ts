@@ -349,6 +349,36 @@ describe("Interpreter - Complete End-to-End Tests", () => {
       expect(newInterp.stack_pop()).toBe(42);
     });
 
+    test("round-trip a definition holding a triple-quoted literal with escapes", async () => {
+      // export_state captures definition source verbatim and import_state
+      // re-tokenizes it, so the literal is re-read under whatever escaping rules
+      // the importing runtime has. Both sides are 0.17.0 here, so the value is
+      // stable — but a state blob written by 0.16.x, where the bare form was raw,
+      // changes meaning on import. That is a migration hazard, not a bug: this
+      // test pins which spelling is stable across the boundary.
+      await interp.run(": NOTE '''today\\'s plan''' ;");
+
+      const state = export_state(interp);
+      const newInterp = new StandardInterpreter();
+      await import_state(newInterp, state);
+
+      await newInterp.run("NOTE");
+      expect(newInterp.stack_pop()).toBe("today's plan");
+    });
+
+    test("round-trip a definition holding a raw triple-quoted literal", async () => {
+      // The r form means the same thing before and after the flip, so a
+      // definition spelled this way survives a cross-version state blob intact.
+      await interp.run(": PATTERN r'''a\\nb''' ;");
+
+      const state = export_state(interp);
+      const newInterp = new StandardInterpreter();
+      await import_state(newInterp, state);
+
+      await newInterp.run("PATTERN");
+      expect(newInterp.stack_pop()).toBe("a\\nb");
+    });
+
     test("round-trip defined words", async () => {
       await interp.run(": GREET 'hello' ;");
       await interp.run(": ADD-ONE 1 +  ;");
