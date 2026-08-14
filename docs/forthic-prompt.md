@@ -18,22 +18,40 @@ Every non-raw form interprets `\n \t \r \0 \\ \" \'`. Other backslash pairs
 remain literal, so `'''\d+\w*'''` preserves the regex while `'''a\nb'''`
 contains a newline.
 
-Escapes are processed before the closing delimiter. For example,
-`'''today\'s plan'''` contains an apostrophe. An unescaped delimiter still
-closes the string: `'''today'''s plan'''` ends after `today`. Prefer a delimiter
-that avoids escaping, such as `"""today's plan"""` or `'''He said "hi"'''`.
+#### Escaping quotes
+
+Use a backslash to include a quote that would otherwise close the string. For
+ordinary strings, prefer escaping the quote over changing delimiters just to
+accommodate it:
+
+- `'he\'s good'` → `he's good`
+- `"She said \"yes\""` → `She said "yes"`
+
+Triple-quoted strings use the same rule. Escape each quote in a delimiter-sized
+run so it remains content:
+
+- `'''today\'s plan'''` → `today's plan`
+- `'''a \'\'\' b'''` → `a ''' b`
+
+Escapes are processed before delimiter detection, so an escaped quote cannot
+close the string. An unescaped delimiter still does: `'''today'''s plan'''`
+ends after `today`.
+
+#### Raw strings
 
 Prefix any form with `r` to disable escape processing: `r'…'`, `r"…"`,
-`r'''…'''`, or `r"""…"""`. Use raw strings when backslashes must remain
-unchanged, especially for:
+`r'''…'''`, or `r"""…"""`. Raw strings do not interpret any escape, including
+quote escapes: `r'he\'s good'` closes at the apostrophe instead of producing
+`he's good`.
+
+Use raw strings when backslashes must remain unchanged, especially for:
 
 - JSON: `r'''{"msg": "line1\nline2"}''' JSON>`
 - Forthic passed to `RUN`, `MAP`, `FILTER`, or `WHEN`: `r"""'a\nb'""" RUN`
 - Paths containing recognized escapes: `r'C:\temp'` (plain `'C:\temp'` contains a tab)
 
-A raw string cannot contain its own delimiter. Switch delimiters or use the
-triple-quoted form; for example, write `r"don't"` or `r'''don't'''` instead of
-`r'don't'`.
+A raw string cannot contain its own delimiter. If raw content includes that
+delimiter, use a wider raw form, such as `r'''don't'''`.
 
 ### Arrays and Records
 
@@ -297,4 +315,3 @@ ALWAYS generate code in this structure:
 - `TRIM-SUFFIX` `( str:string suffix:string -- result:string )` — Strip suffix from end of str if present (otherwise return str unchanged).
 - `UNLINES` `( lines:string[] -- str:string )` — Join an array of lines with newlines. Equivalent to /N JOIN.
 - `UPPERCASE` `( string:string -- result:string )` — Convert string to uppercase
-
