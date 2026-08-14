@@ -76,7 +76,10 @@ describe("String escape sequences (PR 7.5)", () => {
     });
   });
 
-  describe("Triple-quoted strings — fully raw", () => {
+  // Triple-quoted strings are raw. The `r` prefix makes that explicit and is
+  // what carries data literals across the 0.17.0 change, when the bare form
+  // starts processing the whitelist above.
+  describe("Triple-quoted strings — raw", () => {
     test("triple-quoted preserves \\n literally", async () => {
       await interp.run("'''a\\nb'''");
       expect(interp.stack_pop()).toBe("a\\nb");
@@ -90,6 +93,40 @@ describe("String escape sequences (PR 7.5)", () => {
     test("triple-quoted regex pattern with backslashes", async () => {
       await interp.run("'''\\d+\\w*'''");
       expect(interp.stack_pop()).toBe("\\d+\\w*");
+    });
+  });
+
+  describe("Raw string literals (r'…')", () => {
+    test("the prefix suppresses the whitelist at single-delimiter width", async () => {
+      // The only thing r changes today: '…' interprets \n, r'…' does not.
+      await interp.run("'a\\nb'");
+      expect(interp.stack_pop()).toBe("a\nb");
+      await interp.run("r'a\\nb'");
+      expect(interp.stack_pop()).toBe("a\\nb");
+    });
+
+    test("a JSON payload with an escape survives the tokenizer", async () => {
+      // The idiom the prompt teaches. JSON is itself an escaping layer, so the
+      // tokenizer must not eat the backslash that belongs to JSON.parse.
+      await interp.run("r'''{\"a\": \"line1\\nline2\"}''' JSON> [.a] REC@");
+      expect(interp.stack_pop()).toBe("line1\nline2");
+    });
+
+    test("a Windows path inside a JSON payload survives", async () => {
+      await interp.run("r'''{\"p\": \"C:\\\\Users\"}''' JSON> [.p] REC@");
+      expect(interp.stack_pop()).toBe("C:\\Users");
+    });
+
+    test("embedded Forthic round-trips through RUN", async () => {
+      // RUN is an escaping layer too: the outer literal must hand it the source
+      // verbatim so the inner tokenizer sees the escape, not a collapsed one.
+      await interp.run('r""" \'a\\\\nb\' """ RUN');
+      expect(interp.stack_pop()).toBe("a\\nb");
+    });
+
+    test("a raw string can end in a backslash", async () => {
+      await interp.run("r'''C:\\'''");
+      expect(interp.stack_pop()).toBe("C:\\");
     });
   });
 

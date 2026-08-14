@@ -4,6 +4,72 @@ All notable changes to `@forthix/forthic` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project is pre-1.0: while `0.x`, **breaking changes ship in minor releases**. Releases before 0.16.0 are recorded in the git history rather than here.
 
+## [0.16.2] - 2026-08-14
+
+**A transitional release: move backslash-carrying strings to the `r` forms now.** Triple-quoted
+strings are still raw here, but not for much longer. 0.17.0 makes `'''…'''` and `"""…"""`
+interpret the escape whitelist, and anything still leaning on a bare triple-quoted string to carry
+JSON, a regex, or embedded Forthic will break then. This release exists to give that content
+somewhere to go first, and is the only window in which both spellings are correct.
+
+Additive in practice, with one narrow exception noted under Added: a word spelled `r` immediately
+followed by a quote now opens a string.
+
+### Added
+
+- **Raw string literals at every delimiter width**: `r'…'`, `r"…"`, `r'''…'''`, `r"""…"""`. A raw
+  literal interprets no escape sequences at all, so a backslash reaches whatever reads the string
+  next. Reach for it whenever the content is itself escaped — JSON and Forthic source parse their
+  own escapes, and consuming the backslash in the tokenizer corrupts them:
+
+  ```
+  r'''{"msg": "line1\nline2"}''' JSON>
+  r'''{"path": "C:\\Users"}''' JSON>
+  r"""'a\\nb' PRINT""" RUN
+  r'\d+'    r'C:\Users\tmp'
+  ```
+
+  Unlike Python, a Forthic raw string may end in a backslash — `r'C:\'` is `C:\` — because the
+  closing delimiter is never consulted for backslashes. The same rule means a raw string cannot
+  contain its own delimiter: `r'don't'` closes at the apostrophe, leaving `t'` to lex as a word.
+  Switch delimiter (`r"don't"`) or widen it (`r'''don't'''`).
+
+  The prefix is lowercase `r` only; `R'''…'''` stays an ordinary word, as it always has been. It
+  does not compose with the string-redirect marker (`<<'''…'''`); `<<r'''…'''` lexes as an
+  ordinary word and fails at run time with an unknown-word error.
+
+  The one behaviour change: because words are gathered without breaking on quote characters, a
+  token spelled `r` + quote (`r'don't'`, `r"say"hi"`) previously lexed as a single word and now
+  opens a raw string. No word in the standard library is spelled that way.
+
+- The LLM prompt (`docs/forthic-prompt.md`) now routes backslash-carrying strings to the `r`
+  forms, and documents the JSON idiom as `r'''{…}''' JSON>`.
+
+### Notes
+
+Triple-quoted strings stay **raw** in this release, and only in this release. Making them process the seven-escape
+whitelist directly — the obvious fix for `'''today\'s plan'''` shipping its backslash to users —
+breaks two idioms this project documents, because `JSON` and `RUN` are escaping layers of their
+own. `'''{"a": "x\ny"}''' JSON>` throws `Bad control character in string literal`, and
+`""" 'a\\nb' """ RUN` processes the escape twice. Adding an explicit raw form first separates the
+two jobs rather than trading one against the other.
+
+### Coming in 0.17.0 (breaking)
+
+`'''…'''` and `"""…"""` will begin interpreting the escape whitelist (`\n \t \r \0 \\ \" \'`), so
+that `'''today\'s plan'''` yields `today's plan` instead of shipping the backslash. Move data
+literals to the `r` forms now and they are unaffected. Anything still using a bare triple-quoted
+string to carry JSON or embedded Forthic will throw at `JSON>` / `RUN` rather than corrupt
+silently.
+
+The migration is mechanical: prefix any triple-quoted literal containing a backslash with `r`.
+Literals with no backslash are unaffected either way.
+
+### Cross-runtime
+
+`r'…'` is a language-level addition. `forthic-rs` and `forthic-py` need the same syntax to keep
+the runtimes on one contract.
+
 ## [0.16.1] - 2026-07-21
 
 A bug-fix release for the streaming execution path (`Interpreter.streamingRun`), which drives the interpreter from a live token stream one chunk at a time against a single long-lived interpreter. Four defects — present since at least 0.15.0 — corrupted user-defined words or wedged the interpreter. No API changes; upgrading is safe and recommended for anyone using `streamingRun` or `export_state`/`import_state`.

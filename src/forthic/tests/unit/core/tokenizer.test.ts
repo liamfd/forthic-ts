@@ -1,4 +1,10 @@
-import { Tokenizer, CodeLocation, InvalidWordNameError, UnterminatedStringError, TokenType } from "../../../tokenizer";
+import {
+  Tokenizer,
+  CodeLocation,
+  InvalidWordNameError,
+  UnterminatedStringError,
+  TokenType,
+} from "../../../tokenizer";
 
 test("Knows token positions", () => {
   const main_forthic = `
@@ -196,7 +202,6 @@ test("Knows token location in ad hoc string given reference", () => {
   });
 });
 
-
 test("Invalid word name", () => {
   const reference_location = new CodeLocation({
     source: "main",
@@ -210,12 +215,10 @@ test("Invalid word name", () => {
   try {
     const tokenizer = new Tokenizer(main_forthic, reference_location);
     tokenizer.next_token();
-  }
-  catch (e) {
+  } catch (e) {
     expect(e).toBeInstanceOf(InvalidWordNameError);
   }
 });
-
 
 test("Unterminated string", () => {
   const reference_location = new CodeLocation({
@@ -230,11 +233,10 @@ test("Unterminated string", () => {
   try {
     const tokenizer = new Tokenizer(main_forthic, reference_location);
     tokenizer.next_token();
-  }
-  catch (e) {
+  } catch (e) {
     expect(e).toBeInstanceOf(UnterminatedStringError);
   }
-})
+});
 
 describe("Triple quote string with nested quotes", () => {
   const reference_location = new CodeLocation({
@@ -325,14 +327,14 @@ describe("Triple quote string with nested quotes", () => {
       "'''simple'''",
       "'''multi\nline\nstring'''",
       "'''string with \"double quotes\"'''",
-      "'''string with 'single quotes'''''"
+      "'''string with 'single quotes'''''",
     ];
 
     const expected = [
       "simple",
       "multi\nline\nstring",
       'string with "double quotes"',
-      "string with 'single quotes''"
+      "string with 'single quotes''",
     ];
 
     inputs.forEach((input, i) => {
@@ -589,8 +591,12 @@ describe("Marked string-redirect (<<'''…''')", () => {
 
   test("the rule does not disturb < words or comparisons", () => {
     // `<`, `<REC!`, and `1 2 <` must all stay ordinary WORDs.
-    expect(tokenize("<").map((t) => [t.type, t.string])).toEqual([[TokenType.WORD, "<"]]);
-    expect(tokenize("<REC!").map((t) => [t.type, t.string])).toEqual([[TokenType.WORD, "<REC!"]]);
+    expect(tokenize("<").map((t) => [t.type, t.string])).toEqual([
+      [TokenType.WORD, "<"],
+    ]);
+    expect(tokenize("<REC!").map((t) => [t.type, t.string])).toEqual([
+      [TokenType.WORD, "<REC!"],
+    ]);
     expect(tokenize("1 2 <").map((t) => [t.type, t.string])).toEqual([
       [TokenType.WORD, "1"],
       [TokenType.WORD, "2"],
@@ -601,15 +607,21 @@ describe("Marked string-redirect (<<'''…''')", () => {
   test("<< not glued to a triple quote is not a marked string", () => {
     // `<<` with a space before the quotes is just a word.
     const tokens = tokenize("<< '''hello'''");
-    expect(tokens.map((t) => [t.type, t.string, t.is_string_redirect])).toEqual([
-      [TokenType.WORD, "<<", false],
-      [TokenType.STRING, "hello", false],
-    ]);
+    expect(tokens.map((t) => [t.type, t.string, t.is_string_redirect])).toEqual(
+      [
+        [TokenType.WORD, "<<", false],
+        [TokenType.STRING, "hello", false],
+      ],
+    );
   });
 
   test("is_string_redirect() reports the open trailing string in streaming mode", () => {
     // An open marked string (unterminated, streaming) reports true...
-    const marked = new Tokenizer("REDIRECT< <<'''hel", reference_location, true);
+    const marked = new Tokenizer(
+      "REDIRECT< <<'''hel",
+      reference_location,
+      true,
+    );
     expect(marked.next_token().string).toEqual("REDIRECT<"); // WORD
     expect(marked.next_token()).toBeNull(); // open string -> null in streaming mode
     expect(marked.is_string_redirect()).toBe(true);
@@ -620,5 +632,162 @@ describe("Marked string-redirect (<<'''…''')", () => {
     expect(plain.next_token().string).toEqual("REDIRECT<");
     expect(plain.next_token()).toBeNull();
     expect(plain.is_string_redirect()).toBe(false);
+  });
+});
+
+describe("Raw string literals (r'…')", () => {
+  const reference_location = new CodeLocation({
+    source: "test",
+    line: 1,
+    column: 1,
+    start_pos: 0,
+  });
+
+  const content = (input: string) =>
+    new Tokenizer(input, reference_location).next_token().string;
+
+  const tokenize = (input: string) => {
+    const tokenizer = new Tokenizer(input, reference_location);
+    const out: any[] = [];
+    let token: any;
+    while ((token = tokenizer.next_token()) && token.type !== TokenType.EOS) {
+      out.push([token.type, token.string]);
+    }
+    return out;
+  };
+
+  test("the r prefix turns escape processing off at single-delimiter width", () => {
+    // The half of the prefix that does real work today: '…' processes the
+    // whitelist, r'…' does not.
+    expect(content(`'a\\nb'`)).toEqual("a\nb");
+    expect(content(`r'a\\nb'`)).toEqual(`a\\nb`);
+    expect(content(`"a\\tb"`)).toEqual("a\tb");
+    expect(content(`r"a\\tb"`)).toEqual(`a\\tb`);
+  });
+
+  test("r'…' keeps a backslash pair verbatim where the whitelist would eat it", () => {
+    expect(content(`r'C:\\\\Users'`)).toEqual(`C:\\\\Users`);
+    expect(content(`'C:\\\\Users'`)).toEqual(`C:\\Users`);
+  });
+
+  test("r at triple width is an alias today", () => {
+    // Triple-quoted strings are already raw, so the prefix changes nothing yet.
+    // It exists so code can mark the intent before the bare form starts
+    // processing escapes.
+    expect(content(`r'''a\\nb'''`)).toEqual(`a\\nb`);
+    expect(content(`r'''a\\nb'''`)).toEqual(content(`'''a\\nb'''`));
+    expect(content(`r"""a\\nb"""`)).toEqual(content(`"""a\\nb"""`));
+  });
+
+  test("a raw string can end in a backslash — Python cannot express this", () => {
+    // The closing delimiter is never consulted for backslashes, at either width.
+    expect(content(`r'C:\\'`)).toEqual(`C:\\`);
+    expect(content(`r'''C:\\'''`)).toEqual(`C:\\`);
+  });
+
+  test("r glued to a non-quote stays an ordinary word", () => {
+    expect(tokenize("rec")).toEqual([[TokenType.WORD, "rec"]]);
+    expect(tokenize("r")).toEqual([[TokenType.WORD, "r"]]);
+    expect(tokenize("RANGE")).toEqual([[TokenType.WORD, "RANGE"]]);
+  });
+
+  test("uppercase R is not a raw prefix", () => {
+    // One spelling to teach; R'''…''' keeps lexing as a word, as it always has.
+    expect(tokenize(`R'''foo'''`)).toEqual([[TokenType.WORD, `R'''foo'''`]]);
+  });
+
+  test("a raw string is an ordinary token in context", () => {
+    expect(tokenize(`[ r'''a''' ]`)).toEqual([
+      [TokenType.START_ARRAY, "["],
+      [TokenType.STRING, "a"],
+      [TokenType.END_ARRAY, "]"],
+    ]);
+  });
+
+  test("the prefix is only recognised at the start of a token", () => {
+    // Words are gathered without breaking on quote characters, so a trailing
+    // `r` inside a word must not turn the rest into a raw string. This is what
+    // keeps the new branch in transition_from_START collision-free.
+    expect(tokenize(`WORDr'x'`)).toEqual([[TokenType.WORD, `WORDr'x'`]]);
+    expect(tokenize(`FOOr'''x'''`)).toEqual([[TokenType.WORD, `FOOr'''x'''`]]);
+  });
+
+  test("the greedy quote-run rule is unaffected by the prefix", () => {
+    const greedy = `'''string with 'single quotes'''''`;
+    expect(content(`r${greedy}`)).toEqual(content(greedy));
+    expect(content(`r${greedy}`)).toEqual(`string with 'single quotes''`);
+  });
+
+  test("the prefix does not compose with the redirect marker", () => {
+    // Declined on purpose — the redirect grammar stays narrow. Both spellings
+    // degrade to an ordinary word (a loud unknown-word error at run time)
+    // rather than silently half-parsing.
+    expect(tokenize(`<<r'''hi'''`)).toEqual([[TokenType.WORD, `<<r'''hi'''`]]);
+    expect(tokenize(`r<<'''hi'''`)).toEqual([[TokenType.WORD, `r<<'''hi'''`]]);
+    // ...while the unprefixed marker still redirects.
+    const marked = new Tokenizer(`<<'''hi'''`, reference_location).next_token();
+    expect(marked.is_string_redirect).toBe(true);
+  });
+
+  test("an empty raw string is empty, at both widths", () => {
+    expect(content(`r''`)).toEqual("");
+    expect(content(`r""`)).toEqual("");
+  });
+
+  test("an unterminated raw string throws, at both widths", () => {
+    expect(() => content(`r'abc`)).toThrow(UnterminatedStringError);
+    expect(() => content(`r'''abc`)).toThrow(UnterminatedStringError);
+  });
+});
+
+describe("Triple-quoted strings are raw", () => {
+  const reference_location = new CodeLocation({
+    source: "test",
+    line: 1,
+    column: 1,
+    start_pos: 0,
+  });
+
+  const content = (input: string) =>
+    new Tokenizer(input, reference_location).next_token().string;
+
+  test("backslash escapes are not interpreted", () => {
+    expect(content(`'''a\\nb'''`)).toEqual(`a\\nb`);
+    expect(content(`'''a\\\\b'''`)).toEqual(`a\\\\b`);
+  });
+
+  test("regexes and paths survive verbatim", () => {
+    expect(content(`'''zoom\\.us|meet\\.google\\.com'''`)).toEqual(
+      `zoom\\.us|meet\\.google\\.com`,
+    );
+    expect(content(`'''\\d+\\w*\\U0001'''`)).toEqual(`\\d+\\w*\\U0001`);
+  });
+
+  test("an escaped quote is not yet content — known gap, closes in 0.17.0", () => {
+    // An LLM writes `today\'s` because that is correct one delimiter width
+    // narrower, and the backslash still ships verbatim. Making the bare form
+    // process the whitelist is what 0.17.0 does; until then the migration path
+    // is to move data literals to r'''…'''.
+    expect(content(`'''today\\'s plan'''`)).toEqual(`today\\'s plan`);
+  });
+
+  test("unescaped tripling still closes early", () => {
+    expect(content(`'''today'''s plan'''`)).toEqual("today");
+  });
+
+  test("ordinary content is untouched", () => {
+    expect(content(`'''Fetched today's mail.'''`)).toEqual(
+      `Fetched today's mail.`,
+    );
+    expect(content(`"""'''.taco.style''' JQ@"""`)).toEqual(
+      `'''.taco.style''' JQ@`,
+    );
+  });
+
+  test("a marked redirect string is raw too", () => {
+    const tokenizer = new Tokenizer(`<<'''a\\nb'''`, reference_location);
+    const token = tokenizer.next_token();
+    expect(token.string).toEqual(`a\\nb`);
+    expect(token.is_string_redirect).toBe(true);
   });
 });
